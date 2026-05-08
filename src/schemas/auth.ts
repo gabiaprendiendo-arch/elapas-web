@@ -1,15 +1,16 @@
 export type UserAUth = {
-    id: string,
-    name: string,
+    id: string
+    name: string
     email: string
-    emailVerified: string
-    image: object,
-    createAt: string
-    updateAt: string
+    emailVerified: boolean
+    image: string | null
+    createdAt: string
+    updatedAt: string
+    role?: string
+    estado?: boolean
 }
 
 export type DataAuth = {
-    redirect: false
     token: string
     user: UserAUth
-} 
+}
