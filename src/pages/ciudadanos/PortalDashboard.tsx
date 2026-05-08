@@ -2,7 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import PortalLayout from '@/components/ui/PortalLayout'
-import { getMiResumen, type ResumenConsumo } from '@/services/service-portal'
+import {
+    getMisContratos, getMisFacturas, getMisPagos,
+    type ContratoPortal, type FacturaPortal, type PagoPortal
+} from '@/services/service-portal'
 import {
     Droplets, FileText, AlertTriangle, CheckCircle2,
     Clock, Loader2, ChevronRight, MapPin, Gauge, Zap, DollarSign
@@ -16,9 +19,9 @@ const fecha = (d: string) =>
     new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })
 
 const ESTADO_CONTRATO: Record<string, { dot: string; label: string; text: string }> = {
-    activo:    { dot: 'bg-emerald-500', label: 'Activo',     text: 'text-emerald-700' },
-    suspendido:{ dot: 'bg-amber-400',   label: 'Suspendido', text: 'text-amber-700'   },
-    cortado:   { dot: 'bg-red-500',     label: 'Cortado',    text: 'text-red-600'     },
+    activo:     { dot: 'bg-emerald-500', label: 'Activo',     text: 'text-emerald-700' },
+    suspendido: { dot: 'bg-amber-400',   label: 'Suspendido', text: 'text-amber-700'   },
+    cortado:    { dot: 'bg-red-500',     label: 'Cortado',    text: 'text-red-600'     },
 }
 
 const ESTADO_FACTURA: Record<string, { icon: React.ReactNode; cls: string }> = {
@@ -30,23 +33,33 @@ const ESTADO_FACTURA: Record<string, { icon: React.ReactNode; cls: string }> = {
 const PortalDashboard = () => {
     const navigate = useNavigate()
     const { user } = useAuth()
-    const [resumen, setResumen] = useState<ResumenConsumo | null>(null)
+
+    const [contratos, setContratos] = useState<ContratoPortal[]>([])
+    const [facturas, setFacturas] = useState<FacturaPortal[]>([])
+    const [pagos, setPagos] = useState<PagoPortal[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
 
     useEffect(() => {
-        getMiResumen()
-            .then(setResumen)
+        Promise.all([getMisContratos(), getMisFacturas(), getMisPagos()])
+            .then(([c, f, p]) => { setContratos(c); setFacturas(f); setPagos(p) })
             .catch((e: any) => setError(e.message || 'Error al cargar datos.'))
             .finally(() => setLoading(false))
     }, [])
 
+    // Calcular métricas
+    const facturasPendientes = facturas.filter(f => f.estado === 'pendiente' || f.estado === 'vencida')
+    const deudaTotal = facturasPendientes.reduce((acc, f) => acc + Number(f.total), 0)
+    const ultimaFactura = facturas[0]
+
+    // Gráfico: consumo por período (todas las facturas ordenadas)
+    const chartData = [...facturas]
+        .sort((a, b) => a.periodo.localeCompare(b.periodo))
+        .slice(-6)
+        .map(f => ({ periodo: f.periodo, consumo: f.consumoM3 }))
+
     const hora = new Date().getHours()
     const saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches'
-
-    const chartData = (resumen?.facturasPendientes ?? [])
-        .slice(0, 6).reverse()
-        .map(f => ({ periodo: f.periodo, consumo: f.consumoM3 }))
 
     return (
         <PortalLayout>
@@ -55,7 +68,7 @@ const PortalDashboard = () => {
                 {/* Saludo */}
                 <div>
                     <h1 className="text-xl font-bold text-slate-900">
-                        {saludo}, {user?.name?.split(' ')[0] ?? 'Usuario'}
+                        <span>{saludo}, {user?.name?.split(' ')[0] ?? 'Usuario'}</span>
                     </h1>
                     <p className="text-sm text-slate-400 mt-0.5">Resumen de tu cuenta de agua potable</p>
                 </div>
@@ -66,18 +79,18 @@ const PortalDashboard = () => {
                     </div>
                 ) : error ? (
                     <div className="px-4 py-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600">{error}</div>
-                ) : resumen && (
+                ) : (
                     <>
                         {/* Alerta deuda */}
-                        {resumen.deudaTotal > 0 && (
+                        {deudaTotal > 0 && (
                             <div className="flex items-center justify-between gap-4 px-4 py-3.5 bg-red-50 border border-red-100 rounded-xl">
                                 <div className="flex items-center gap-3">
                                     <AlertTriangle size={16} className="text-red-500 shrink-0" />
                                     <div>
                                         <p className="text-sm font-semibold text-red-700">
-                                            {resumen.cantidadPendientes} factura{resumen.cantidadPendientes > 1 ? 's' : ''} pendiente{resumen.cantidadPendientes > 1 ? 's' : ''}
+                                            {facturasPendientes.length} factura{facturasPendientes.length > 1 ? 's' : ''} pendiente{facturasPendientes.length > 1 ? 's' : ''}
                                         </p>
-                                        <p className="text-xs text-red-500">Deuda: {bs(resumen.deudaTotal)}</p>
+                                        <p className="text-xs text-red-500">Deuda total: {bs(deudaTotal)}</p>
                                     </div>
                                 </div>
                                 <button onClick={() => navigate('/portal/facturas')}
@@ -89,16 +102,16 @@ const PortalDashboard = () => {
 
                         {/* Métricas */}
                         <div className="grid grid-cols-2 gap-3">
-                            <div className={`rounded-xl border p-4 ${resumen.deudaTotal > 0 ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}>
+                            <div className={`rounded-xl border p-4 ${deudaTotal > 0 ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100'}`}>
                                 <div className="flex items-center gap-2 mb-2">
-                                    <DollarSign size={14} className={resumen.deudaTotal > 0 ? 'text-red-400' : 'text-emerald-500'} />
+                                    <DollarSign size={14} className={deudaTotal > 0 ? 'text-red-400' : 'text-emerald-500'} />
                                     <span className="text-xs text-slate-400">Deuda actual</span>
                                 </div>
-                                <p className={`text-xl font-bold ${resumen.deudaTotal > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                    {bs(resumen.deudaTotal)}
+                                <p className={`text-xl font-bold ${deudaTotal > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                    {bs(deudaTotal)}
                                 </p>
                                 <p className="text-xs text-slate-400 mt-0.5">
-                                    {resumen.deudaTotal > 0 ? `${resumen.cantidadPendientes} sin pagar` : 'Al día ✓'}
+                                    {deudaTotal > 0 ? `${facturasPendientes.length} sin pagar` : 'Al día ✓'}
                                 </p>
                             </div>
 
@@ -108,27 +121,27 @@ const PortalDashboard = () => {
                                     <span className="text-xs text-slate-400">Último consumo</span>
                                 </div>
                                 <p className="text-xl font-bold text-slate-900">
-                                    {resumen.facturasPendientes[0]?.consumoM3 ?? resumen.contratos[0]?.ultimaLectura?.valorLectura ?? 0}
+                                    {ultimaFactura?.consumoM3 ?? 0}
                                     <span className="text-sm font-normal text-slate-400 ml-1">m³</span>
                                 </p>
                                 <p className="text-xs text-slate-400 mt-0.5">
-                                    {resumen.facturasPendientes[0]?.periodo ?? 'Sin datos'}
+                                    {ultimaFactura?.periodo ?? 'Sin datos'}
                                 </p>
                             </div>
                         </div>
 
-                        {/* Contratos */}
-                        {resumen.contratos.length > 0 && (
+                        {/* Mis contratos */}
+                        {contratos.length > 0 && (
                             <div className="space-y-2">
                                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Mis contratos</p>
-                                {resumen.contratos.map(c => {
-                                    const est = ESTADO_CONTRATO[c.estado] ?? ESTADO_CONTRATO.activo
+                                {contratos.map(c => {
+                                    const est = ESTADO_CONTRATO[c.contrato.estado] ?? ESTADO_CONTRATO.activo
                                     return (
-                                        <div key={c.id} className="bg-white border border-slate-100 rounded-xl p-4">
+                                        <div key={c.contrato.id} className="bg-white border border-slate-100 rounded-xl p-4">
                                             <div className="flex items-center justify-between mb-3">
                                                 <div className="flex items-center gap-2">
                                                     <Gauge size={15} className="text-slate-400" />
-                                                    <span className="text-sm font-semibold text-slate-800">{c.nroContrato}</span>
+                                                    <span className="text-sm font-semibold text-slate-800">{c.contrato.nroContrato}</span>
                                                 </div>
                                                 <span className={`flex items-center gap-1.5 text-xs font-medium ${est.text}`}>
                                                     <span className={`w-1.5 h-1.5 rounded-full ${est.dot}`} />
@@ -138,21 +151,12 @@ const PortalDashboard = () => {
                                             <div className="space-y-1">
                                                 <p className="text-xs text-slate-500 flex items-center gap-1.5">
                                                     <MapPin size={11} className="text-slate-300" />
-                                                    {c.direccion}
+                                                    {c.predio.direccion}
                                                 </p>
                                                 <p className="text-xs text-slate-400">
-                                                    Medidor: <span className="font-mono">{c.nroMedidor}</span>
+                                                    Medidor: <span className="font-mono">{c.medidor.nroMedidor}</span>
                                                 </p>
                                             </div>
-                                            {c.ultimaLectura && (
-                                                <div className="mt-3 pt-3 border-t border-slate-50 flex items-center justify-between">
-                                                    <span className="text-xs text-slate-400">Última lectura</span>
-                                                    <div className="text-right">
-                                                        <span className="text-sm font-bold text-blue-600">{c.ultimaLectura.valorLectura} m³</span>
-                                                        <span className="text-xs text-slate-400 ml-2">{fecha(c.ultimaLectura.fechaLectura)}</span>
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
                                     )
                                 })}
@@ -160,10 +164,10 @@ const PortalDashboard = () => {
                         )}
 
                         {/* Facturas pendientes */}
-                        {resumen.facturasPendientes.length > 0 && (
+                        {facturasPendientes.length > 0 && (
                             <div className="space-y-2">
                                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Por pagar</p>
-                                {resumen.facturasPendientes.map(f => {
+                                {facturasPendientes.map(f => {
                                     const est = ESTADO_FACTURA[f.estado] ?? ESTADO_FACTURA.pendiente
                                     return (
                                         <div key={f.id} className="bg-white border border-slate-100 rounded-xl p-4">
@@ -174,13 +178,13 @@ const PortalDashboard = () => {
                                                     </div>
                                                     <div>
                                                         <div className="flex items-center gap-2">
-                                                            <span className="text-sm font-semibold text-slate-800">Período {f.periodo}</span>
+                                                            <span className="text-sm font-semibold text-slate-800"><span>Período {f.periodo}</span></span>
                                                             <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${est.cls}`}>
                                                                 {est.icon}{f.estado}
                                                             </span>
                                                         </div>
                                                         <p className="text-xs text-slate-400 mt-0.5">
-                                                            {f.contrato.nroContrato} · Vence {fecha(f.fechaVencimiento)}
+                                                            Vence {fecha(f.fechaVencimiento)}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -191,15 +195,15 @@ const PortalDashboard = () => {
                                             <div className="mt-3 grid grid-cols-3 gap-2 bg-slate-50 rounded-lg p-2.5">
                                                 <div>
                                                     <p className="text-[10px] text-slate-400">Consumo</p>
-                                                    <p className="text-xs font-semibold text-slate-700">{f.consumoM3} m³</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] text-slate-400">Precio/m³</p>
-                                                    <p className="text-xs font-semibold text-slate-700">Bs {Number(f.tarifa.precioM3).toFixed(2)}</p>
+                                                    <p className="text-xs font-semibold text-slate-700"><span>{f.consumoM3} m³</span></p>
                                                 </div>
                                                 <div>
                                                     <p className="text-[10px] text-slate-400">Cargo fijo</p>
-                                                    <p className="text-xs font-semibold text-slate-700">Bs {Number(f.tarifa.cargoFijo).toFixed(2)}</p>
+                                                    <p className="text-xs font-semibold text-slate-700">{bs(f.cargoFijo ?? 0)}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] text-slate-400">Total</p>
+                                                    <p className="text-xs font-semibold text-blue-700">{bs(f.total)}</p>
                                                 </div>
                                             </div>
 
@@ -239,7 +243,7 @@ const PortalDashboard = () => {
                         )}
 
                         {/* Últimos pagos */}
-                        {resumen.ultimosPagos.length > 0 && (
+                        {pagos.length > 0 && (
                             <div className="bg-white border border-slate-100 rounded-xl overflow-hidden">
                                 <div className="flex items-center justify-between px-4 py-3 border-b border-slate-50">
                                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Últimos pagos</p>
@@ -248,7 +252,7 @@ const PortalDashboard = () => {
                                         Ver todos <ChevronRight size={12} />
                                     </button>
                                 </div>
-                                {resumen.ultimosPagos.slice(0, 3).map(p => (
+                                {pagos.slice(0, 3).map(p => (
                                     <div key={p.id} className="flex items-center justify-between px-4 py-3 border-b border-slate-50 last:border-0">
                                         <div className="flex items-center gap-3">
                                             <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
@@ -261,7 +265,7 @@ const PortalDashboard = () => {
                         )}
 
                         {/* Al día */}
-                        {resumen.deudaTotal === 0 && resumen.contratos.length > 0 && (
+                        {deudaTotal === 0 && contratos.length > 0 && (
                             <div className="flex items-center gap-3 px-4 py-3.5 bg-emerald-50 border border-emerald-100 rounded-xl">
                                 <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
                                 <div>

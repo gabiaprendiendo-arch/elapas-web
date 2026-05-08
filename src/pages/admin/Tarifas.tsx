@@ -1,10 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
 import AdminLayout from '@/components/ui/AdminLayout'
 import { Plus, Edit2, X, Loader2, CheckCircle2, XCircle, Settings2 } from 'lucide-react'
+// Tarifas usa TarifaCreate del schema como payload de formulario
 import {
     getTarifas, createTarifa, updateTarifa,
-    type Tarifa, type TarifaPayload
 } from '@/services/service-tarifas'
+import type { Tarifa, TarifaCreate } from '@/schemas/tarifas'
+
+// Alias local para el formulario (TarifaCreate con campos string para los inputs numéricos)
+type TarifaPayload = {
+    nombre: string
+    tramoMin: number
+    tramoMax: number
+    precioM3: string | number
+    cargoFijo: string
+    estado?: boolean
+}
 
 // ── Validación ────────────────────────────────────────────
 const validate = (f: TarifaPayload): string => {
@@ -42,8 +53,8 @@ const FormModal = ({ mode, initial, onClose, onSaved }: FormModalProps) => {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
 
-    const set = (key: keyof TarifaPayload, value: any) =>
-        setForm(prev => ({ ...prev, [key]: value }))
+    const set = (key: keyof TarifaPayload, value: TarifaPayload[keyof TarifaPayload]) =>
+        setForm((prev: TarifaPayload) => ({ ...prev, [key]: value }))
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -52,10 +63,18 @@ const FormModal = ({ mode, initial, onClose, onSaved }: FormModalProps) => {
         setLoading(true)
         setError('')
         try {
+            const payload: TarifaCreate = {
+                nombre: form.nombre,
+                tramoMin: form.tramoMin,
+                tramoMax: form.tramoMax,
+                precioM3: Number(form.precioM3),
+                cargoFijo: String(form.cargoFijo),
+                estado: form.estado ?? true,
+            }
             if (mode === 'create') {
-                await createTarifa(form)
+                await createTarifa(payload)
             } else if (initial) {
-                await updateTarifa(initial.id, form)
+                await updateTarifa(initial.id, payload)
             }
             onSaved()
         } catch (e: any) {
@@ -164,9 +183,9 @@ const FormModal = ({ mode, initial, onClose, onSaved }: FormModalProps) => {
                     <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                         <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Vista previa</p>
                         <p className="text-sm text-slate-700">
-                            Consumo de <strong>{form.tramoMin}</strong> a <strong>{form.tramoMax} m³</strong> →{' '}
-                            <strong>Bs {Number(form.precioM3).toFixed(2)}/m³</strong> + cargo fijo{' '}
-                            <strong>Bs {Number(form.cargoFijo).toFixed(2)}</strong>
+                            <span>Consumo de </span><strong>{form.tramoMin}</strong><span> a </span><strong><span>{form.tramoMax} m³</span></strong><span> → </span>
+                            <strong><span>Bs {Number(form.precioM3).toFixed(2)}/m³</span></strong><span> + cargo fijo </span>
+                            <strong><span>Bs {Number(form.cargoFijo).toFixed(2)}</span></strong>
                         </p>
                     </div>
 

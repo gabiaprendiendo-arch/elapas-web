@@ -1,24 +1,8 @@
 import api from "@/lib/api"
 import axios from "axios"
+import type { Tarifa, TarifaCreate, TarifaUpdate } from "@/schemas/tarifas"
 
-export interface Tarifa {
-    id: string
-    nombre: string
-    tramoMin: number
-    tramoMax: number
-    precioM3: string
-    cargoFijo: string
-    estado: boolean
-}
-
-export interface TarifaPayload {
-    nombre: string
-    tramoMin: number
-    tramoMax: number
-    precioM3: string
-    cargoFijo: string
-    estado?: boolean
-}
+type ApiResponse<T> = { success: boolean; data: T }
 
 function handleError(error: unknown): never {
     if (axios.isAxiosError(error)) {
@@ -30,21 +14,31 @@ function handleError(error: unknown): never {
 
 export async function getTarifas(): Promise<Tarifa[]> {
     try {
-        const res = await api.get<{ success: boolean; data: Tarifa[] }>('/tarifas')
+        const res = await api.get<ApiResponse<Tarifa[]>>("/tarifas")
         return res.data.data
     } catch (e) { handleError(e) }
 }
 
-export async function createTarifa(payload: TarifaPayload): Promise<Tarifa> {
+export async function getTarifa(id: string): Promise<Tarifa> {
     try {
-        const res = await api.post<{ success: boolean; data: Tarifa }>('/tarifas', payload)
+        const res = await api.get<ApiResponse<Tarifa>>(`/tarifas/${id}`)
         return res.data.data
     } catch (e) { handleError(e) }
 }
 
-export async function updateTarifa(id: string, payload: TarifaPayload): Promise<Tarifa> {
+export async function createTarifa(payload: TarifaCreate): Promise<Tarifa> {
     try {
-        const res = await api.put<{ success: boolean; data: Tarifa }>(`/tarifas/${id}`, payload)
+        const res = await api.post<ApiResponse<Tarifa>>("/tarifas", payload)
         return res.data.data
     } catch (e) { handleError(e) }
 }
+
+export async function updateTarifa(id: string, payload: TarifaUpdate): Promise<Tarifa> {
+    try {
+        const res = await api.put<ApiResponse<Tarifa>>(`/tarifas/${id}`, payload)
+        return res.data.data
+    } catch (e) { handleError(e) }
+}
+
+// Re-export del tipo
+export type { Tarifa, TarifaCreate, TarifaUpdate }

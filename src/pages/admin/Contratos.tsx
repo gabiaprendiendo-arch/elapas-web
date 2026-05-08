@@ -1,70 +1,64 @@
 import { useState, useEffect, useCallback } from 'react'
 import AdminLayout from '@/components/ui/AdminLayout'
-import {
-    Plus, Search, Edit2, X, Loader2, MapPin,
-    Hash, CheckCircle2, AlertTriangle, Clock, FileText
-} from 'lucide-react'
-import {
-    getContratos, createContrato, updateContrato,
-    type Contrato, type CreateContratoPayload
-} from '@/services/service-contratos'
-import { getUsuarios, type Usuario } from '@/services/service-user'
-import { getDistritos, type Distrito } from '@/services/service-distritos'
+import { Plus, Search, Edit2, X, Loader2, MapPin, Hash, CheckCircle2, AlertTriangle, Clock, FileText } from 'lucide-react'
+import { getContratos, createContrato, updateContrato } from '@/services/service-contratos'
+import type { Contrato, ContratoCreate } from '@/schemas/contrato'
+import { getUsuarios } from '@/services/service-user'
+import type { User } from '@/schemas/user'
+import { getDistritos } from '@/services/service-distritos'
+import type { Distrito } from '@/schemas/distritos'
 
-// ── helpers ───────────────────────────────────────────────
 const ESTADO_STYLES: Record<string, string> = {
-    activo: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    suspendido: 'bg-amber-50 text-amber-700 border border-amber-200',
-    cortado: 'bg-red-50 text-red-600 border border-red-200',
+    activo:    'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    suspendido:'bg-amber-50 text-amber-700 border border-amber-200',
+    cortado:   'bg-red-50 text-red-600 border border-red-200',
 }
 const ESTADO_ICONS: Record<string, React.ReactNode> = {
-    activo: <CheckCircle2 size={11} />,
-    suspendido: <Clock size={11} />,
-    cortado: <AlertTriangle size={11} />,
+    activo:    <CheckCircle2 size={11} />,
+    suspendido:<Clock size={11} />,
+    cortado:   <AlertTriangle size={11} />,
 }
 
 // ── Modal formulario ──────────────────────────────────────
 interface FormModalProps {
     mode: 'create' | 'edit'
     initial?: Contrato | null
-    usuarios: Usuario[]
+    usuarios: User[]
     distritos: Distrito[]
     onClose: () => void
     onSaved: () => void
 }
 
-const EMPTY: CreateContratoPayload = {
-    nroContrato: '', usuarioId: '', distritoId: '',
-    direccion: '', nroMedidor: '', estado: 'activo',
+const EMPTY: ContratoCreate = {
+    nroContrato: '',
+    usuarioId: '',
+    predioId: '',
+    medidorId: '',
 }
 
 const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: FormModalProps) => {
-    const [form, setForm] = useState<CreateContratoPayload>(
+    const [form, setForm] = useState<ContratoCreate>(
         initial
             ? {
-                nroContrato: initial.nroContrato,
-                usuarioId: initial.usuarioId,
-                distritoId: initial.distritoId,
-                direccion: initial.direccion,
-                nroMedidor: initial.nroMedidor,
-                latitud: initial.latitud ?? undefined,
-                longitud: initial.longitud ?? undefined,
-                estado: initial.estado,
+                nroContrato: initial.contrato.nroContrato,
+                usuarioId:   initial.contrato.usuarioId,
+                predioId:    initial.contrato.predioId,
+                medidorId:   initial.contrato.medidorId,
+                estado:      initial.contrato.estado,
             }
             : EMPTY
     )
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
 
-    const set = (k: keyof CreateContratoPayload, v: string) =>
-        setForm(p => ({ ...p, [k]: v }))
+    const set = (k: keyof ContratoCreate, v: string) =>
+        setForm((p: ContratoCreate) => ({ ...p, [k]: v }))
 
     const validate = () => {
         if (!form.nroContrato.trim()) return 'El número de contrato es obligatorio.'
-        if (!form.usuarioId) return 'Selecciona un usuario.'
-        if (!form.distritoId) return 'Selecciona un distrito.'
-        if (!form.direccion.trim()) return 'La dirección es obligatoria.'
-        if (!form.nroMedidor.trim()) return 'El número de medidor es obligatorio.'
+        if (!form.usuarioId)          return 'Selecciona un usuario.'
+        if (!form.predioId)           return 'Selecciona un predio/distrito.'
+        if (!form.medidorId)          return 'El medidor es obligatorio.'
         return ''
     }
 
@@ -75,14 +69,13 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
         setLoading(true); setError('')
         try {
             if (mode === 'create') await createContrato(form)
-            else if (initial) await updateContrato(initial.id, form)
+            else if (initial) await updateContrato(initial.contrato.id, form)
             onSaved()
         } catch (e: any) {
             setError(e.message || 'Error al guardar.')
         } finally { setLoading(false) }
     }
 
-    // Filtrar solo ciudadanos para asignar contratos
     const ciudadanos = usuarios.filter(u => u.role === 'ciudadano')
 
     return (
@@ -98,15 +91,13 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    {/* Nro contrato */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">Nº de Contrato *</label>
                         <input value={form.nroContrato} onChange={e => set('nroContrato', e.target.value)}
-                            placeholder="Ej: CONT-2026-001"
+                            placeholder="Ej: CNT-2026-001"
                             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm" />
                     </div>
 
-                    {/* Usuario */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">Ciudadano titular *</label>
                         <select value={form.usuarioId} onChange={e => set('usuarioId', e.target.value)}
@@ -118,10 +109,9 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
                         </select>
                     </div>
 
-                    {/* Distrito */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">Distrito *</label>
-                        <select value={form.distritoId} onChange={e => set('distritoId', e.target.value)}
+                        <select value={form.predioId} onChange={e => set('predioId', e.target.value)}
                             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm bg-white">
                             <option value="">— Seleccionar distrito —</option>
                             {distritos.map(d => (
@@ -130,27 +120,17 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
                         </select>
                     </div>
 
-                    {/* Dirección */}
-                    <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1">Dirección *</label>
-                        <input value={form.direccion} onChange={e => set('direccion', e.target.value)}
-                            placeholder="Ej: Av. Heroínas #123, Zona Central"
-                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm" />
-                    </div>
-
-                    {/* Medidor */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">Nº de Medidor *</label>
-                        <input value={form.nroMedidor} onChange={e => set('nroMedidor', e.target.value)}
+                        <input value={form.medidorId} onChange={e => set('medidorId', e.target.value)}
                             placeholder="Ej: MED-00123456"
                             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm" />
                     </div>
 
-                    {/* Estado (solo en edición) */}
                     {mode === 'edit' && (
                         <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1">Estado del servicio</label>
-                            <select value={form.estado} onChange={e => set('estado', e.target.value)}
+                            <label className="block text-sm font-semibold text-slate-700 mb-1">Estado</label>
+                            <select value={form.estado ?? 'activo'} onChange={e => set('estado', e.target.value)}
                                 className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm bg-white">
                                 <option value="activo">Activo</option>
                                 <option value="suspendido">Suspendido</option>
@@ -171,7 +151,7 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
                         <button type="submit" disabled={loading}
                             className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
                             {loading && <Loader2 size={16} className="animate-spin" />}
-                            {mode === 'create' ? 'Crear Contrato' : 'Guardar Cambios'}
+                            {mode === 'create' ? 'Crear' : 'Guardar'}
                         </button>
                     </div>
                 </form>
@@ -183,7 +163,7 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
 // ── Página principal ──────────────────────────────────────
 const Contratos = () => {
     const [contratos, setContratos] = useState<Contrato[]>([])
-    const [usuarios, setUsuarios] = useState<Usuario[]>([])
+    const [usuarios, setUsuarios] = useState<User[]>([])
     const [distritos, setDistritos] = useState<Distrito[]>([])
     const [total, setTotal] = useState(0)
     const [page, setPage] = useState(1)
@@ -196,7 +176,7 @@ const Contratos = () => {
     const [showForm, setShowForm] = useState(false)
     const [editTarget, setEditTarget] = useState<Contrato | null>(null)
 
-    // Mapa usuario id → nombre para mostrar en tabla
+    // Mapas para lookup rápido
     const usuarioMap = Object.fromEntries(usuarios.map(u => [u.id, u]))
     const distritoMap = Object.fromEntries(distritos.map(d => [d.id, d]))
 
@@ -214,46 +194,49 @@ const Contratos = () => {
     useEffect(() => { fetchContratos() }, [fetchContratos])
 
     useEffect(() => {
-        // Cargar usuarios y distritos para los selectores
         getUsuarios({ limit: 200 }).then(r => setUsuarios(r.data)).catch(() => { })
         getDistritos().then(setDistritos).catch(() => { })
     }, [])
 
-    const filtered = contratos.filter(c =>
-        c.nroContrato.toLowerCase().includes(search.toLowerCase()) ||
-        c.nroMedidor.toLowerCase().includes(search.toLowerCase()) ||
-        c.direccion.toLowerCase().includes(search.toLowerCase()) ||
-        (usuarioMap[c.usuarioId]?.name ?? '').toLowerCase().includes(search.toLowerCase())
-    )
+    // Acceso correcto a la estructura anidada { contrato, predio, medidor }
+    const filtered = contratos.filter(c => {
+        const q = search.toLowerCase()
+        return (
+            (c.contrato.nroContrato ?? '').toLowerCase().includes(q) ||
+            (c.medidor.nroMedidor ?? '').toLowerCase().includes(q) ||
+            (c.predio.direccion ?? '').toLowerCase().includes(q) ||
+            (usuarioMap[c.contrato.usuarioId]?.name ?? '').toLowerCase().includes(q)
+        )
+    })
 
     const totalPages = Math.ceil(total / LIMIT)
 
     return (
         <AdminLayout>
-            <div className="space-y-8">
+            <div className="space-y-6">
                 {/* Encabezado */}
-                <div className="flex justify-between items-center">
+                <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Gestión de Contratos</h1>
+                        <h1 className="text-xl font-bold text-slate-900">Contratos</h1>
+                        <p className="text-sm text-slate-400 mt-0.5"><span>{total} contratos registrados</span></p>
                     </div>
                     <button
                         onClick={() => { setEditTarget(null); setShowForm(true) }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all shadow-xl shadow-blue-600/20 active:scale-95"
-                    >
-                        <Plus size={20} /> Nuevo Contrato
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all text-sm active:scale-95">
+                        <Plus size={18} /> Nuevo Contrato
                     </button>
                 </div>
 
                 {/* Filtros */}
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4">
-                    <div className="relative flex-1 min-w-[200px]">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <div className="flex flex-wrap gap-3 items-center">
+                    <div className="relative flex-1 min-w-48">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                             placeholder="Buscar por contrato, medidor, dirección o titular..."
-                            className="w-full bg-slate-50 border-none rounded-xl pl-12 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-600/20 transition-all" />
+                            className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all" />
                     </div>
                     <select value={estadoFilter} onChange={e => { setEstadoFilter(e.target.value); setPage(1) }}
-                        className="bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-medium text-slate-600 outline-none focus:ring-2 focus:ring-blue-600/20">
+                        className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-600 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
                         <option value="">Todos los estados</option>
                         <option value="activo">Activo</option>
                         <option value="suspendido">Suspendido</option>
@@ -262,76 +245,79 @@ const Contratos = () => {
                 </div>
 
                 {error && (
-                    <div className="p-4 rounded-2xl bg-red-50 text-red-600 text-sm font-medium border border-red-100">{error}</div>
+                    <div className="px-4 py-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600">{error}</div>
                 )}
 
                 {/* Tabla */}
-                <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-white border border-slate-100 rounded-xl overflow-hidden">
                     {loading ? (
                         <div className="flex items-center justify-center py-20">
-                            <Loader2 size={32} className="animate-spin text-blue-600" />
+                            <Loader2 size={28} className="animate-spin text-slate-300" />
                         </div>
                     ) : filtered.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                            <FileText size={40} className="mb-3 opacity-30" />
-                            <p className="font-medium">No se encontraron contratos</p>
+                            <FileText size={36} className="mb-3 opacity-30" />
+                            <p className="text-sm">No se encontraron contratos</p>
                         </div>
                     ) : (
-                        <table className="w-full text-left border-collapse">
-                            <thead className="bg-slate-50/50 border-b border-slate-200">
-                                <tr>
-                                    <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">Contrato / Medidor</th>
-                                    <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">Titular</th>
-                                    <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">Dirección</th>
-                                    <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">Distrito</th>
-                                    <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">Estado</th>
-                                    <th className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Acciones</th>
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-slate-100 bg-slate-50/50">
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-400">Contrato</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-400">Titular</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-400">Dirección</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-400">Medidor</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-400">Distrito</th>
+                                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-400">Estado</th>
+                                    <th className="px-5 py-3.5 text-right text-xs font-semibold text-slate-400">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filtered.map(c => {
-                                    const titular = usuarioMap[c.usuarioId]
-                                    const distrito = distritoMap[c.distritoId]
+                            <tbody>
+                                {filtered.map((c, i) => {
+                                    const titular = usuarioMap[c.contrato.usuarioId]
+                                    const distrito = distritoMap[c.predio.distritoId]
                                     return (
-                                        <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <p className="text-sm font-black text-slate-900">{c.nroContrato}</p>
-                                                <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                                                    <Hash size={11} />{c.nroMedidor}
-                                                </p>
+                                        <tr key={c.contrato.id}
+                                            className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-50/30'}`}>
+                                            <td className="px-5 py-3.5">
+                                                <p className="font-semibold text-slate-800">{c.contrato.nroContrato}</p>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-5 py-3.5">
                                                 {titular ? (
                                                     <div>
-                                                        <p className="text-sm font-bold text-slate-900">{titular.name}</p>
-                                                        <p className="text-xs text-slate-500">{titular.email}</p>
+                                                        <p className="font-medium text-slate-800">{titular.name}</p>
+                                                        <p className="text-xs text-slate-400">{titular.email}</p>
                                                     </div>
                                                 ) : (
                                                     <span className="text-xs text-slate-400 italic">Sin asignar</span>
                                                 )}
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <p className="text-sm text-slate-600 flex items-center gap-1.5">
-                                                    <MapPin size={13} className="text-slate-400 shrink-0" />
-                                                    <span className="truncate max-w-[180px]">{c.direccion}</span>
+                                            <td className="px-5 py-3.5">
+                                                <p className="text-slate-600 flex items-center gap-1.5 max-w-44 truncate">
+                                                    <MapPin size={12} className="text-slate-300 shrink-0" />
+                                                    {c.predio.direccion}
                                                 </p>
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-slate-600 font-medium">
-                                                {distrito?.nombre ?? '—'}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${ESTADO_STYLES[c.estado]}`}>
-                                                    {ESTADO_ICONS[c.estado]}
-                                                    {c.estado}
+                                            <td className="px-5 py-3.5">
+                                                <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded flex items-center gap-1 w-fit">
+                                                    <Hash size={10} />{c.medidor.nroMedidor}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-right">
+                                            <td className="px-5 py-3.5 text-slate-600 text-xs">
+                                                {distrito?.nombre ?? '—'}
+                                            </td>
+                                            <td className="px-5 py-3.5">
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${ESTADO_STYLES[c.contrato.estado]}`}>
+                                                    {ESTADO_ICONS[c.contrato.estado]}
+                                                    {c.contrato.estado}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-3.5 text-right">
                                                 <button
                                                     onClick={() => { setEditTarget(c); setShowForm(true) }}
-                                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                                                    title="Editar contrato"
-                                                >
-                                                    <Edit2 size={16} />
+                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                    title="Editar">
+                                                    <Edit2 size={15} />
                                                 </button>
                                             </td>
                                         </tr>
@@ -344,20 +330,16 @@ const Contratos = () => {
 
                 {/* Paginación */}
                 {totalPages > 1 && (
-                    <div className="flex items-center justify-between">
-                        <p className="text-sm text-slate-500">
-                            Mostrando {((page - 1) * LIMIT) + 1}–{Math.min(page * LIMIT, total)} de {total} contratos
-                        </p>
-                        <div className="flex gap-2">
+                    <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-400">
+                            {((page - 1) * LIMIT) + 1}–{Math.min(page * LIMIT, total)} de {total}
+                        </span>
+                        <div className="flex gap-1">
                             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                                className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-all">
-                                Anterior
-                            </button>
-                            <span className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold">{page} / {totalPages}</span>
+                                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-all">←</button>
+                            <span className="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-semibold">{page}</span>
                             <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                                className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-all">
-                                Siguiente
-                            </button>
+                                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition-all">→</button>
                         </div>
                     </div>
                 )}

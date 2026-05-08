@@ -9,19 +9,15 @@ const api = axios.create({
     },
 });
 
-// NO se usa Bearer token — better-auth autentica por cookie de sesión (better-auth.session_token)
-// El interceptor de request no agrega Authorization header
-
 api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Sesión expirada o inválida — limpiar y redirigir
+            // Limpiar sesión local
             localStorage.removeItem('auth_user')
             localStorage.removeItem('auth_token')
-            if (window.location.pathname !== '/login') {
-                window.location.href = '/login'
-            }
+            // Disparar evento para que el contexto de auth reaccione
+            window.dispatchEvent(new CustomEvent('auth:expired'))
         }
         return Promise.reject(error);
     },

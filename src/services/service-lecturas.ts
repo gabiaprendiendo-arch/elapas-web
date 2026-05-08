@@ -1,24 +1,18 @@
 import api from "@/lib/api"
 import axios from "axios"
+import type { Lectura } from "@/schemas/lecturas"
 
-export interface Lectura {
-    id: string
-    contratoId: string
-    brigadistaId: string
-    valorLectura: number
-    fotoUrl: string | null
-    latitud: string | null
-    longitud: string | null
-    fechaLectura: string
-    createdAt: string
-    brigadista?: { id: string; name: string; email: string }
-    contrato?: { id: string; nroContrato: string; nroMedidor: string }
+type ApiResponse<T> = { success: boolean; data: T }
+type PaginatedResponse<T> = {
+    success: boolean
+    data: T[]
+    pagination: { page: number; limit: number; total: number }
 }
 
+// Tipo real que devuelve el backend: { brigadista: string, cantidad: number }
 export interface LecturasPorBrigadista {
-    brigadistaId: string
-    brigadistaNombre: string
-    total: number
+    brigadista: string
+    cantidad: number
 }
 
 function handleError(error: unknown): never {
@@ -35,10 +29,17 @@ export async function getLecturas(params?: {
     brigadistaId?: string
     page?: number
     limit?: number
-}): Promise<{ data: Lectura[]; pagination: { page: number; limit: number; total: number } }> {
+}): Promise<PaginatedResponse<Lectura>> {
     try {
-        const res = await api.get('/lecturas', { params })
+        const res = await api.get<PaginatedResponse<Lectura>>("/lecturas", { params })
         return res.data
+    } catch (e) { handleError(e) }
+}
+
+export async function getLectura(id: string): Promise<Lectura> {
+    try {
+        const res = await api.get<ApiResponse<Lectura>>(`/lecturas/${id}`)
+        return res.data.data
     } catch (e) { handleError(e) }
 }
 
@@ -47,7 +48,13 @@ export async function getLecturasPorBrigadista(params?: {
     fechaFin?: string
 }): Promise<LecturasPorBrigadista[]> {
     try {
-        const res = await api.get('/reportes/lecturas-por-brigadista', { params })
+        const res = await api.get<ApiResponse<LecturasPorBrigadista[]>>(
+            "/reportes/lecturas-por-brigadista",
+            { params }
+        )
         return res.data.data
     } catch (e) { handleError(e) }
 }
+
+// Re-export del tipo
+export type { Lectura }

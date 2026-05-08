@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { Droplets, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 
 const LoginScreen = () => {
   const navigate = useNavigate()
@@ -146,7 +146,21 @@ const LoginScreen = () => {
               </button>
             </form>
 
-            
+            {/* Acceso rápido demo */}
+            <div className="mt-5 pt-5 border-t border-slate-100">
+              <p className="text-xs text-slate-400 text-center mb-3">Acceso rápido (demo)</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(['admin', 'brigadista', 'ciudadano'] as const).map(role => (
+                  <button key={role} type="button" onClick={() => fillDemo(role)}
+                    className="py-2 rounded-xl bg-slate-50 text-slate-600 text-xs font-semibold hover:bg-slate-100 transition-all border border-slate-200 capitalize">
+                    {role}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 text-center mt-2">
+                Contraseña: <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">password123</code>
+              </p>
+            </div>
           </div>
         </div>
 

@@ -1,29 +1,12 @@
 import api from "@/lib/api"
 import axios from "axios"
+import type { Contrato, ContratoCreate, ContratoUpdate } from "@/schemas/contrato"
 
-export interface Contrato {
-    id: string
-    nroContrato: string
-    usuarioId: string
-    distritoId: string
-    direccion: string
-    nroMedidor: string
-    latitud: string | null
-    longitud: string | null
-    estado: 'activo' | 'suspendido' | 'cortado'
-    createdAt: string
-    updatedAt: string
-}
-
-export interface CreateContratoPayload {
-    nroContrato: string
-    usuarioId: string
-    distritoId: string
-    direccion: string
-    nroMedidor: string
-    latitud?: string
-    longitud?: string
-    estado?: 'activo' | 'suspendido' | 'cortado'
+type ApiResponse<T> = { success: boolean; data: T }
+type PaginatedResponse<T> = {
+    success: boolean
+    data: T[]
+    pagination: { page: number; limit: number; total: number }
 }
 
 export interface Moroso {
@@ -35,10 +18,15 @@ export interface Moroso {
     facturasMasAntigua: string
 }
 
-export interface PaginatedResponse<T> {
-    success: boolean
-    data: T[]
-    pagination: { page: number; limit: number; total: number }
+export interface FacturaAdmin {
+    id: string
+    contratoId: string
+    periodo: string
+    consumoM3: number
+    total: string
+    estado: "pendiente" | "pagada" | "vencida"
+    fechaVencimiento: string
+    createdAt: string
 }
 
 function handleError(error: unknown): never {
@@ -56,22 +44,41 @@ export async function getContratos(params?: {
     limit?: number
 }): Promise<PaginatedResponse<Contrato>> {
     try {
-        const res = await api.get<PaginatedResponse<Contrato>>('/contratos', { params })
+        const res = await api.get<PaginatedResponse<Contrato>>("/contratos", { params })
         return res.data
     } catch (e) { handleError(e) }
 }
 
-export async function createContrato(payload: CreateContratoPayload): Promise<Contrato> {
+export async function getContrato(id: string): Promise<Contrato> {
     try {
-        const res = await api.post<{ success: boolean; data: Contrato }>('/contratos', payload)
+        const res = await api.get<ApiResponse<Contrato>>(`/contratos/${id}`)
         return res.data.data
     } catch (e) { handleError(e) }
 }
 
-export async function updateContrato(id: string, payload: Partial<CreateContratoPayload>): Promise<Contrato> {
+export async function createContrato(payload: ContratoCreate): Promise<Contrato> {
     try {
-        const res = await api.put<{ success: boolean; data: Contrato }>(`/contratos/${id}`, payload)
+        const res = await api.post<ApiResponse<Contrato>>("/contratos", payload)
         return res.data.data
+    } catch (e) { handleError(e) }
+}
+
+export async function updateContrato(id: string, payload: ContratoUpdate): Promise<Contrato> {
+    try {
+        const res = await api.put<ApiResponse<Contrato>>(`/contratos/${id}`, payload)
+        return res.data.data
+    } catch (e) { handleError(e) }
+}
+
+export async function getFacturasAdmin(params?: {
+    estado?: string
+    periodo?: string
+    page?: number
+    limit?: number
+}): Promise<PaginatedResponse<FacturaAdmin>> {
+    try {
+        const res = await api.get<PaginatedResponse<FacturaAdmin>>("/facturas", { params })
+        return res.data
     } catch (e) { handleError(e) }
 }
 
@@ -82,7 +89,7 @@ export async function getMorosos(params?: {
     limit?: number
 }): Promise<PaginatedResponse<Moroso>> {
     try {
-        const res = await api.get<PaginatedResponse<Moroso>>('/facturas/morosos', { params })
+        const res = await api.get<PaginatedResponse<Moroso>>("/facturas/morosos", { params })
         return res.data
     } catch (e) { handleError(e) }
 }
@@ -92,23 +99,9 @@ export async function generarFacturas(payload: {
     fechaVencimiento: string
 }): Promise<number> {
     try {
-        const res = await api.post<{ success: boolean; data: number }>('/facturas/generar', payload)
+        const res = await api.post<ApiResponse<number>>("/facturas/generar", payload)
         return res.data.data
     } catch (e) { handleError(e) }
 }
 
-export async function getFacturasAdmin(params?: {
-    estado?: string
-    periodo?: string
-    page?: number
-    limit?: number
-}): Promise<PaginatedResponse<{
-    id: string; contratoId: string; periodo: string
-    consumoM3: number; total: string; estado: string
-    fechaVencimiento: string; createdAt: string
-}>> {
-    try {
-        const res = await api.get('/facturas', { params })
-        return res.data
-    } catch (e) { handleError(e) }
-}
+export type { Contrato, ContratoCreate, ContratoUpdate }

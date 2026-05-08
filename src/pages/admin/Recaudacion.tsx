@@ -63,9 +63,8 @@ const Recaudacion = () => {
 
     const totalRecaudado = porDistrito.reduce((acc, d) => acc + Number(d.total), 0)
 
-    // Preparar datos para el gráfico de barras agrupadas
     const chartData = porDistrito.map(d => ({
-        nombre: d.distritoNombre,
+        nombre: d.distrito,
         total: Number(d.total),
     }))
 
@@ -93,7 +92,7 @@ const Recaudacion = () => {
                                 </div>
                                 <div>
                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recaudación Hoy</p>
-                                    <p className="text-xl font-black text-emerald-700">{formatBs(resumen?.recaudacion ?? 0)}</p>
+                                    <p className="text-xl font-black text-emerald-700">{formatBs(resumen?.recaudacionHoy ?? 0)}</p>
                                 </div>
                             </div>
                             <div className="bg-white rounded-2xl border border-slate-200 p-6 flex items-center gap-4">
@@ -102,7 +101,7 @@ const Recaudacion = () => {
                                 </div>
                                 <div>
                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lecturas Hoy</p>
-                                    <p className="text-2xl font-black text-slate-900">{resumen?.lecturas ?? 0}</p>
+                                    <p className="text-2xl font-black text-slate-900">{resumen?.lecturasHoy ?? 0}</p>
                                 </div>
                             </div>
                             <div className="bg-white rounded-2xl border border-slate-200 p-6 flex items-center gap-4">
@@ -111,7 +110,7 @@ const Recaudacion = () => {
                                 </div>
                                 <div>
                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cortes Hoy</p>
-                                    <p className="text-2xl font-black text-slate-900">{resumen?.cortes ?? 0}</p>
+                                    <p className="text-2xl font-black text-slate-900">{resumen?.cortesHoy ?? 0}</p>
                                 </div>
                             </div>
                             <div className="bg-white rounded-2xl border border-slate-200 p-6 flex items-center gap-4">
@@ -190,13 +189,13 @@ const Recaudacion = () => {
                                     <tbody className="divide-y divide-slate-100">
                                         {porDistrito.map((d, i) => {
                                             const pct = totalRecaudado > 0 ? (Number(d.total) / totalRecaudado) * 100 : 0
-                                            const color = DISTRICT_COLORS[d.distritoNombre] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]
+                                            const color = DISTRICT_COLORS[d.distrito] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]
                                             return (
-                                                <tr key={d.distritoId} className="hover:bg-slate-50/80 transition-colors">
+                                                <tr key={d.distrito} className="hover:bg-slate-50/80 transition-colors">
                                                     <td className="px-8 py-4">
                                                         <div className="flex items-center gap-3">
                                                             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-                                                            <span className="text-sm font-bold text-slate-900">{d.distritoNombre}</span>
+                                                            <span className="text-sm font-bold text-slate-900">{d.distrito}</span>
                                                         </div>
                                                     </td>
                                                     <td className="px-8 py-4">

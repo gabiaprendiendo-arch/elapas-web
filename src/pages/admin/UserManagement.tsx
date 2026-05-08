@@ -6,8 +6,12 @@ import {
 } from 'lucide-react'
 import {
     getUsuarios, createUsuario, updateUsuario, deleteUsuario,
-    type Usuario, type CreateUsuarioPayload, type UpdateUsuarioPayload
 } from '@/services/service-user'
+import type { User as Usuario } from '@/schemas/user'
+
+// Los tipos del schema usan 'nombre' alineado con el DTO del backend
+type CreateUsuarioPayload = { nombre: string; email: string; password: string; role: 'admin' | 'brigadista' | 'ciudadano' }
+type UpdateUsuarioPayload = { nombre?: string; email?: string; role?: 'admin' | 'brigadista' | 'ciudadano'; estado?: boolean }
 
 // ── helpers ──────────────────────────────────────────────
 const ROLE_LABELS: Record<string, string> = {

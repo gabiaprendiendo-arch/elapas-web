@@ -1,17 +1,19 @@
 import api from "@/lib/api"
 import axios from "axios"
 
+type ApiResponse<T> = { success: boolean; data: T }
+
+// Tipos reales que devuelve el backend
 export interface ResumenDiario {
-    lecturas: number
-    cortes: number
-    recaudacion: string
+    lecturasHoy: number
+    cortesHoy: number
+    recaudacionHoy: number
     contratosActivos: number
 }
 
 export interface RecaudacionPorDistrito {
-    distritoId: string
-    distritoNombre: string
-    total: string
+    distrito: string   // nombre del distrito directamente
+    total: number
 }
 
 function handleError(error: unknown): never {
@@ -24,14 +26,14 @@ function handleError(error: unknown): never {
 
 export async function getResumenDiario(): Promise<ResumenDiario> {
     try {
-        const res = await api.get('/reportes/resumen-diario')
+        const res = await api.get<ApiResponse<ResumenDiario>>("/reportes/resumen-diario")
         return res.data.data
     } catch (e) { handleError(e) }
 }
 
 export async function getRecaudacionPorDistrito(): Promise<RecaudacionPorDistrito[]> {
     try {
-        const res = await api.get('/reportes/recaudacion-por-distrito')
+        const res = await api.get<ApiResponse<RecaudacionPorDistrito[]>>("/reportes/recaudacion-por-distrito")
         return res.data.data
     } catch (e) { handleError(e) }
 }

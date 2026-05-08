@@ -1,23 +1,40 @@
 import api from "@/lib/api"
 import axios from "axios"
 
-// ── Tipos ─────────────────────────────────────────────────
+type ApiResponse<T> = { success: boolean; data: T }
 
-export interface Contrato {
-    id: string
-    nroContrato: string
-    usuarioId: string
-    distritoId: string
-    direccion: string
-    nroMedidor: string
-    latitud: string | null
-    longitud: string | null
-    estado: 'activo' | 'suspendido' | 'cortado'
-    createdAt: string
-    updatedAt: string
+// ── Tipos reales del backend ──────────────────────────────
+
+// /contratos/mis-contratos devuelve { contrato, predio, medidor }[]
+export interface ContratoPortal {
+    contrato: {
+        id: string
+        nroContrato: string
+        usuarioId: string
+        predioId: string
+        medidorId: string
+        estado: 'activo' | 'suspendido' | 'cortado'
+        createdAt: string
+        updatedAt: string
+    }
+    predio: {
+        id: string
+        distritoId: string
+        direccion: string
+        latitud: string | null
+        longitud: string | null
+        createdAt: string
+    }
+    medidor: {
+        id: string
+        nroMedidor: string
+        contratoId: string
+        createdAt: string
+    }
 }
 
-export interface Factura {
+// /facturas/mis-facturas devuelve facturas planas
+export interface FacturaPortal {
     id: string
     contratoId: string
     lecturaId: string
@@ -32,7 +49,8 @@ export interface Factura {
     createdAt: string
 }
 
-export interface Pago {
+// /pagos/mis-pagos devuelve pagos planos
+export interface PagoPortal {
     id: string
     facturaId: string
     monto: string
@@ -44,77 +62,41 @@ export interface Pago {
 }
 
 export interface QrData {
-    facturaId: string
-    monto: string
-    entidad: string
-    qrString: string
+    qrData: string   // JSON string con { facturaId, monto, entidad, fecha }
 }
-
-// Resumen enriquecido para el portal ciudadano
-export interface ResumenConsumo {
-    contratos: Array<Contrato & {
-        ultimaLectura: {
-            id: string
-            valorLectura: number
-            fechaLectura: string
-        } | null
-    }>
-    facturasPendientes: Array<Factura & {
-        contrato: { id: string; nroContrato: string; direccion: string; nroMedidor: string; estado: string }
-        tarifa: { nombre: string; precioM3: string; cargoFijo: string }
-    }>
-    deudaTotal: number
-    cantidadPendientes: number
-    ultimosPagos: Pago[]
-}
-
-// ── Error handler ─────────────────────────────────────────
 
 function handleError(error: unknown): never {
     if (axios.isAxiosError(error)) {
-        const msg = error.response?.data?.message || "Error en la operación"
+        const msg = error.response?.data?.message || "Error en el portal"
         throw new Error(msg, { cause: error })
     }
     throw new Error("Error inesperado", { cause: error })
 }
 
-// ── Contratos ─────────────────────────────────────────────
-
-export async function getMisContratos(): Promise<Contrato[]> {
+export async function getMisContratos(): Promise<ContratoPortal[]> {
     try {
-        const res = await api.get<{ success: boolean; data: Contrato[] }>('/contratos/mis-contratos')
+        const res = await api.get<ApiResponse<ContratoPortal[]>>("/contratos/mis-contratos")
         return res.data.data
     } catch (e) { handleError(e) }
 }
 
-// ── Facturas ──────────────────────────────────────────────
-
-export async function getMisFacturas(): Promise<Factura[]> {
+export async function getMisFacturas(): Promise<FacturaPortal[]> {
     try {
-        const res = await api.get<{ success: boolean; data: Factura[] }>('/facturas/mis-facturas')
+        const res = await api.get<ApiResponse<FacturaPortal[]>>("/facturas/mis-facturas")
         return res.data.data
     } catch (e) { handleError(e) }
 }
 
-export async function getMiResumen(): Promise<ResumenConsumo> {
+export async function getMisPagos(): Promise<PagoPortal[]> {
     try {
-        const res = await api.get<{ success: boolean; data: ResumenConsumo }>('/facturas/mi-resumen')
-        return res.data.data
-    } catch (e) { handleError(e) }
-}
-
-// ── Pagos ─────────────────────────────────────────────────
-
-export async function getMisPagos(): Promise<Pago[]> {
-    try {
-        const res = await api.get<{ success: boolean; data: Pago[] }>('/pagos/mis-pagos')
+        const res = await api.get<ApiResponse<PagoPortal[]>>("/pagos/mis-pagos")
         return res.data.data
     } catch (e) { handleError(e) }
 }
 
 export async function generarQr(facturaId: string): Promise<QrData> {
     try {
-        const res = await api.post<{ success: boolean; data: QrData }>(`/pagos/qr/${facturaId}`)
+        const res = await api.post<ApiResponse<QrData>>(`/pagos/qr/${facturaId}`)
         return res.data.data
     } catch (e) { handleError(e) }
 }
@@ -122,11 +104,11 @@ export async function generarQr(facturaId: string): Promise<QrData> {
 export async function confirmarPago(payload: {
     facturaId: string
     monto: string
-    metodoPago?: 'qr_simple' | 'efectivo' | 'transferencia'
+    metodoPago?: PagoPortal["metodoPago"]
     referencia?: string
-}): Promise<Pago> {
+}): Promise<PagoPortal> {
     try {
-        const res = await api.post<{ success: boolean; data: Pago }>('/pagos/confirmar', payload)
+        const res = await api.post<ApiResponse<PagoPortal>>("/pagos/confirmar", payload)
         return res.data.data
     } catch (e) { handleError(e) }
 }

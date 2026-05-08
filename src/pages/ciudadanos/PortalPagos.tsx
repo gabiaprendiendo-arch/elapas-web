@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import PortalLayout from '@/components/ui/PortalLayout'
-import { getMisPagos, type Pago } from '@/services/service-portal'
+import { getMisPagos, type PagoPortal as Pago } from '@/services/service-portal'
 import {
     CreditCard, Loader2, QrCode, Banknote,
     ArrowLeftRight, CheckCircle2, TrendingUp
