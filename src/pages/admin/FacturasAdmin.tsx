@@ -5,8 +5,7 @@ import {
     AlertTriangle, Zap, X, Download
 } from 'lucide-react'
 import { getFacturasAdmin, generarFacturas, type FacturaAdmin } from '@/services/service-contratos'
-
-const MEDIA_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api'
+import jsPDF from 'jspdf'
 
 const formatBs = (v: string | number) =>
     `Bs ${Number(v).toLocaleString('es-BO', { minimumFractionDigits: 2 })}`
@@ -161,8 +160,108 @@ const FacturasAdmin = () => {
     const vencidas   = facturas.filter(f => f.estado === 'vencida').length
     const totalPages = Math.ceil(total / LIMIT)
 
-    const handleDescargarPdf = (id: string) => {
-        window.open(`${MEDIA_BASE}/facturas/${id}/pdf`, '_blank')
+    const [descargando, setDescargando] = useState<string | null>(null)
+
+    const handleDescargarPdf = (f: FacturaAdmin) => {
+        setDescargando(f.id)
+        try {
+            const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+            const W = 210
+            const margin = 18
+
+            // ── Encabezado ──────────────────────────────────────────
+            doc.setFillColor(37, 99, 235)          // blue-600
+            doc.rect(0, 0, W, 32, 'F')
+            doc.setTextColor(255, 255, 255)
+            doc.setFontSize(18)
+            doc.setFont('helvetica', 'bold')
+            doc.text('ELAPAS', margin, 14)
+            doc.setFontSize(9)
+            doc.setFont('helvetica', 'normal')
+            doc.text('Empresa Local de Agua Potable y Alcantarillado', margin, 21)
+            doc.text('Sucre, Bolivia', margin, 27)
+
+            // Número de factura (derecha)
+            doc.setFontSize(10)
+            doc.setFont('helvetica', 'bold')
+            doc.text(`FACTURA`, W - margin, 14, { align: 'right' })
+            doc.setFontSize(8)
+            doc.setFont('helvetica', 'normal')
+            doc.text(`#${f.id.slice(0, 8).toUpperCase()}`, W - margin, 20, { align: 'right' })
+            doc.text(`Período: ${f.periodo}`, W - margin, 26, { align: 'right' })
+
+            // ── Cuerpo ───────────────────────────────────────────────
+            doc.setTextColor(30, 41, 59)           // slate-800
+            let y = 46
+
+            // Datos del contrato
+            doc.setFillColor(248, 250, 252)        // slate-50
+            doc.roundedRect(margin, y, W - margin * 2, 28, 3, 3, 'F')
+            doc.setFontSize(8)
+            doc.setFont('helvetica', 'bold')
+            doc.setTextColor(100, 116, 139)        // slate-500
+            doc.text('CONTRATO', margin + 5, y + 7)
+            doc.text('ESTADO', margin + 80, y + 7)
+            doc.text('VENCIMIENTO', margin + 130, y + 7)
+            doc.setFont('helvetica', 'normal')
+            doc.setTextColor(30, 41, 59)
+            doc.setFontSize(9)
+            doc.text(f.contratoId.slice(0, 16) + '…', margin + 5, y + 16)
+            doc.text(f.estado.toUpperCase(), margin + 80, y + 16)
+            doc.text(formatFecha(f.fechaVencimiento), margin + 130, y + 16)
+
+            y += 38
+
+            // Tabla de detalle
+            doc.setFillColor(37, 99, 235)
+            doc.rect(margin, y, W - margin * 2, 9, 'F')
+            doc.setTextColor(255, 255, 255)
+            doc.setFontSize(8)
+            doc.setFont('helvetica', 'bold')
+            doc.text('DESCRIPCIÓN', margin + 4, y + 6)
+            doc.text('CONSUMO', W - margin - 80, y + 6)
+            doc.text('IMPORTE', W - margin - 4, y + 6, { align: 'right' })
+
+            y += 9
+            const rows = [
+                ['Servicio de agua potable', `${f.consumoM3} m³`, formatBs(f.total)],
+            ]
+            rows.forEach((row, i) => {
+                doc.setFillColor(i % 2 === 0 ? 255 : 248, i % 2 === 0 ? 255 : 250, i % 2 === 0 ? 255 : 252)
+                doc.rect(margin, y, W - margin * 2, 9, 'F')
+                doc.setTextColor(30, 41, 59)
+                doc.setFont('helvetica', 'normal')
+                doc.setFontSize(8)
+                doc.text(row[0], margin + 4, y + 6)
+                doc.text(row[1], W - margin - 80, y + 6)
+                doc.text(row[2], W - margin - 4, y + 6, { align: 'right' })
+                y += 9
+            })
+
+            // Total
+            y += 4
+            doc.setFillColor(239, 246, 255)        // blue-50
+            doc.roundedRect(W - margin - 70, y, 70, 14, 2, 2, 'F')
+            doc.setFontSize(9)
+            doc.setFont('helvetica', 'bold')
+            doc.setTextColor(37, 99, 235)
+            doc.text('TOTAL A PAGAR', W - margin - 66, y + 6)
+            doc.setFontSize(11)
+            doc.text(formatBs(f.total), W - margin - 4, y + 10, { align: 'right' })
+
+            // ── Pie ──────────────────────────────────────────────────
+            doc.setDrawColor(226, 232, 240)        // slate-200
+            doc.line(margin, 270, W - margin, 270)
+            doc.setFontSize(7)
+            doc.setFont('helvetica', 'normal')
+            doc.setTextColor(148, 163, 184)        // slate-400
+            doc.text('Generado por el sistema ELAPAS · Este documento es válido como comprobante de facturación.', W / 2, 275, { align: 'center' })
+            doc.text(`Fecha de emisión: ${new Date().toLocaleDateString('es-BO')}`, W / 2, 280, { align: 'center' })
+
+            doc.save(`Factura-${f.periodo}-${f.id.slice(0, 8)}.pdf`)
+        } finally {
+            setDescargando(null)
+        }
     }
 
     return (
@@ -298,10 +397,14 @@ const FacturasAdmin = () => {
                                         </td>
                                         <td className="px-5 py-3.5 text-right">
                                             <button
-                                                onClick={() => handleDescargarPdf(f.id)}
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                onClick={() => handleDescargarPdf(f)}
+                                                disabled={descargando === f.id}
+                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
                                                 title="Descargar PDF">
-                                                <Download size={14} />
+                                                {descargando === f.id
+                                                    ? <Loader2 size={14} className="animate-spin text-blue-500" />
+                                                    : <Download size={14} />
+                                                }
                                             </button>
                                         </td>
                                     </tr>

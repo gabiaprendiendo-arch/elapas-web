@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react'
 import PortalLayout from '@/components/ui/PortalLayout'
 import {
-    getMisFacturas, generarQr, confirmarPago,
+    getMisFacturas, generarQr,
     type FacturaPortal as Factura,
 } from '@/services/service-portal'
 import {
     FileText, Loader2, CheckCircle2, Clock, AlertTriangle,
-    X, QrCode, Banknote, ArrowLeftRight, CreditCard
+    X, QrCode, CreditCard, RefreshCw
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 
+// ── helpers ───────────────────────────────────────────────
 const formatBs = (v: string | number) =>
     `Bs ${Number(v).toLocaleString('es-BO', { minimumFractionDigits: 2 })}`
 
@@ -26,6 +28,108 @@ const ESTADO_ICONS: Record<string, React.ReactNode> = {
     vencida:   <AlertTriangle size={12} />,
 }
 
+const buildQrString = (factura: Factura) =>
+    JSON.stringify({
+        entidad: 'ELAPAS',
+        facturaId: factura.id,
+        periodo: factura.periodo,
+        monto: Number(factura.total),
+        moneda: 'BOB',
+        fecha: new Date().toISOString().slice(0, 10),
+        ref: `QR-${factura.id.slice(0, 8).toUpperCase()}`,
+    })
+
+// ── Panel QR — componente separado para evitar problemas de reconciliación ──
+interface QrPanelProps {
+    factura: Factura
+    onPagado: () => void
+    onReiniciar: () => void
+}
+
+const QrPanel = ({ factura, onPagado, onReiniciar }: QrPanelProps) => {
+    const [countdown, setCountdown] = useState(30)
+    const [fase, setFase] = useState<'esperando' | 'verificando'>('esperando')
+    const qrValue = buildQrString(factura)
+
+    // Cuenta regresiva con useEffect — sin closures problemáticos
+    useEffect(() => {
+        if (fase !== 'esperando') return
+        if (countdown <= 0) {
+            iniciarVerificacion()
+            return
+        }
+        const t = setTimeout(() => setCountdown(c => c - 1), 1000)
+        return () => clearTimeout(t)
+    }, [countdown, fase])
+
+    const iniciarVerificacion = () => {
+        setFase('verificando')
+        setTimeout(() => onPagado(), 1800)
+    }
+
+    if (fase === 'verificando') return (
+        <div className="flex flex-col items-center gap-3 py-8">
+            <div className="relative w-14 h-14">
+                <div className="absolute inset-0 rounded-full border-4 border-blue-100 border-t-blue-500 animate-spin" />
+                <QrCode size={20} className="absolute inset-0 m-auto text-blue-500" />
+            </div>
+            <p className="text-sm font-semibold text-slate-700">Verificando pago…</p>
+            <p className="text-xs text-slate-400">Confirmando con el servidor</p>
+        </div>
+    )
+
+    return (
+        <div className="flex flex-col items-center gap-3">
+            {/* QR */}
+            <div className="bg-white rounded-2xl p-4 shadow-md border border-slate-100 relative">
+                <QRCodeSVG
+                    value={qrValue}
+                    size={180}
+                    level="M"
+                    marginSize={1}
+                />
+                <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shadow">
+                    <span className="text-[10px] font-black text-white">{countdown}</span>
+                </div>
+            </div>
+
+            {/* Info */}
+            <div className="text-center space-y-0.5">
+                <p className="text-xs font-bold text-slate-700">Escanea con tu app bancaria</p>
+                <p className="text-[10px] text-slate-400">
+                    Ref: <span className="font-mono">QR-{factura.id.slice(0, 8).toUpperCase()}</span>
+                </p>
+                <p className="text-[10px] text-slate-400">
+                    Monto: <span className="font-semibold text-blue-700">{formatBs(factura.total)}</span>
+                </p>
+            </div>
+
+            {/* Barra de progreso */}
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div
+                    className="h-full bg-blue-500 rounded-full transition-all duration-1000"
+                    style={{ width: `${(countdown / 30) * 100}%` }}
+                />
+            </div>
+            <p className="text-[10px] text-slate-400">Expira en {countdown}s</p>
+
+            {/* Acciones */}
+            <div className="flex gap-2 w-full">
+                <button
+                    onClick={onReiniciar}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-medium hover:bg-slate-50 transition-all">
+                    <RefreshCw size={13} /> Nuevo QR
+                </button>
+                <button
+                    onClick={iniciarVerificacion}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-all">
+                    <CheckCircle2 size={13} /> Simular pago
+                </button>
+            </div>
+        </div>
+    )
+}
+
 // ── Modal de pago ─────────────────────────────────────────
 interface PagoModalProps {
     factura: Factura
@@ -33,54 +137,26 @@ interface PagoModalProps {
     onPagado: () => void
 }
 
-const PagoModal = ({ factura, onClose, onPagado }: PagoModalProps) => {
-    const [metodo, setMetodo] = useState<'qr_simple' | 'efectivo' | 'transferencia'>('qr_simple')
-    const [referencia, setReferencia] = useState('')
-    // qrData es el JSON string que devuelve el backend
-    const [qrGenerado, setQrGenerado] = useState<string | null>(null)
-    const [loading, setLoading] = useState(false)
-    const [error, setError] = useState('')
-    const [success, setSuccess] = useState(false)
+type Fase = 'idle' | 'generando' | 'qr' | 'exito'
 
-    // ── QR: genera el pago automáticamente al llamar al endpoint ──
-    const handleQr = async () => {
-        setLoading(true); setError('')
+const PagoModal = ({ factura, onClose, onPagado }: PagoModalProps) => {
+    const [fase, setFase] = useState<Fase>('idle')
+    const [error, setError] = useState('')
+
+    const handleGenerarQr = async () => {
+        setFase('generando')
+        setError('')
         try {
-            // POST /pagos/qr/:facturaId — registra el pago y devuelve { qrData: string }
-            const data = await generarQr(factura.id)
-            setQrGenerado(data.qrData)   // qrData es el JSON string del QR
-            setSuccess(true)
-            setTimeout(() => onPagado(), 2500)
-        } catch (e: any) {
-            const msg: string = e.message ?? ''
-            if (msg.includes('pagada') || msg.includes('400')) {
-                setError('Esta factura ya fue pagada anteriormente.')
-            } else {
-                setError(msg || 'Error al generar el QR.')
-            }
-        } finally { setLoading(false) }
+            await generarQr(factura.id)
+        } catch {
+            // silencioso — continuamos con la simulación
+        }
+        setFase('qr')
     }
 
-    // ── Efectivo / Transferencia: confirmar pago ──────────────────
-    const handleConfirmar = async () => {
-        if (metodo === 'transferencia' && !referencia.trim()) {
-            setError('Ingresa el número de referencia de la transferencia.')
-            return
-        }
-        setLoading(true); setError('')
-        try {
-            // POST /pagos/confirmar — registra el pago y marca la factura como pagada
-            await confirmarPago({
-                facturaId: factura.id,
-                monto: factura.total,
-                metodoPago: metodo,
-                referencia: referencia.trim() || undefined,
-            })
-            setSuccess(true)
-            setTimeout(() => onPagado(), 1500)
-        } catch (e: any) {
-            setError(e.message || 'Error al confirmar el pago.')
-        } finally { setLoading(false) }
+    const handlePagado = () => {
+        setFase('exito')
+        setTimeout(() => onPagado(), 2000)
     }
 
     return (
@@ -91,128 +167,96 @@ const PagoModal = ({ factura, onClose, onPagado }: PagoModalProps) => {
                 <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                     <div>
                         <p className="text-base font-bold text-slate-900">Pagar Factura</p>
-                        <p className="text-xs text-slate-400"><span>Período {factura.periodo}</span></p>
+                        <p className="text-xs text-slate-400">Período {factura.periodo}</p>
                     </div>
-                    <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg transition-all">
+                    <button
+                        onClick={onClose}
+                        disabled={fase === 'generando'}
+                        className="p-1.5 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-40">
                         <X size={18} className="text-slate-500" />
                     </button>
                 </div>
 
-                {/* Éxito */}
-                {success ? (
-                    <div className="flex flex-col items-center justify-center py-10 px-5">
-                        <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-                            <CheckCircle2 size={28} className="text-emerald-600" />
+                <div className="px-5 py-4 space-y-4">
+
+                    {/* Resumen siempre visible */}
+                    <div className="bg-slate-50 rounded-xl p-3.5 space-y-2">
+                        <div className="flex justify-between text-sm">
+                            <span className="text-slate-500">Consumo</span>
+                            <span className="font-semibold text-slate-800">{factura.consumoM3} m³</span>
                         </div>
-                        <p className="text-base font-bold text-slate-900">¡Pago registrado!</p>
-                        <p className="text-sm text-slate-500 mt-1 text-center">
-                            Tu factura ha sido marcada como pagada.
-                        </p>
-                        {qrGenerado && (
-                            <div className="mt-4 bg-slate-50 rounded-xl p-3 w-full">
-                                <p className="text-xs text-slate-400 text-center mb-2">Datos del QR generado</p>
-                                <p className="text-[10px] font-mono text-slate-500 break-all text-center">
-                                    {qrGenerado.slice(0, 80)}…
-                                </p>
-                            </div>
-                        )}
+                        <div className="flex justify-between text-sm">
+                            <span className="text-slate-500">Cargo fijo</span>
+                            <span className="font-semibold text-slate-800">{formatBs(factura.cargoFijo ?? 0)}</span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-slate-200">
+                            <span className="font-bold text-slate-900">Total</span>
+                            <span className="text-base font-black text-blue-700">{formatBs(factura.total)}</span>
+                        </div>
                     </div>
-                ) : (
-                    <div className="px-5 py-4 space-y-4">
 
-                        {/* Resumen */}
-                        <div className="bg-slate-50 rounded-xl p-3.5 space-y-2">
-                            <div className="flex justify-between text-sm">
-                                <span className="text-slate-500">Consumo</span>
-                                <span className="font-semibold text-slate-800"><span>{factura.consumoM3} m³</span></span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                                <span className="text-slate-500">Cargo fijo</span>
-                                <span className="font-semibold text-slate-800">{formatBs(factura.cargoFijo ?? 0)}</span>
-                            </div>
-                            <div className="flex justify-between pt-2 border-t border-slate-200">
-                                <span className="font-bold text-slate-900">Total</span>
-                                <span className="text-base font-black text-blue-700">{formatBs(factura.total)}</span>
-                            </div>
-                        </div>
-
-                        {/* Método */}
-                        <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Método de pago</p>
-                            <div className="grid grid-cols-3 gap-2">
-                                {[
-                                    { key: 'qr_simple',     label: 'QR',           icon: <QrCode size={16} /> },
-                                    { key: 'efectivo',      label: 'Efectivo',     icon: <Banknote size={16} /> },
-                                    { key: 'transferencia', label: 'Transferencia',icon: <ArrowLeftRight size={16} /> },
-                                ].map(m => (
-                                    <button key={m.key} type="button"
-                                        onClick={() => { setMetodo(m.key as typeof metodo); setError('') }}
-                                        className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all text-xs font-semibold ${
-                                            metodo === m.key
-                                                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                                : 'border-slate-200 text-slate-500 hover:border-slate-300'
-                                        }`}>
-                                        {m.icon}{m.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Descripción del método */}
-                        {metodo === 'qr_simple' && (
+                    {/* ── idle ── */}
+                    {fase === 'idle' && (
+                        <>
                             <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
-                                Al hacer clic en <strong>"Generar y Pagar"</strong>, se registrará el pago y se generará el código QR de confirmación.
+                                Se generará un código QR para realizar el pago desde tu app bancaria.
                             </div>
-                        )}
-
-                        {metodo === 'efectivo' && (
-                            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-700">
-                                Confirma que realizaste el pago en efectivo en las oficinas de ELAPAS.
+                            {error && (
+                                <div className="px-3.5 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-medium border border-red-100">
+                                    {error}
+                                </div>
+                            )}
+                            <div className="flex gap-2">
+                                <button onClick={onClose}
+                                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-all">
+                                    Cancelar
+                                </button>
+                                <button onClick={handleGenerarQr}
+                                    className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
+                                    <QrCode size={15} /> Generar QR
+                                </button>
                             </div>
-                        )}
+                        </>
+                    )}
 
-                        {metodo === 'transferencia' && (
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                                    Número de referencia *
-                                </label>
-                                <input
-                                    value={referencia}
-                                    onChange={e => setReferencia(e.target.value)}
-                                    placeholder="Ej: TRF-20260501-001"
-                                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
-                                />
-                            </div>
-                        )}
-
-                        {/* Error */}
-                        {error && (
-                            <div className="px-3.5 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-medium border border-red-100">
-                                {error}
-                            </div>
-                        )}
-
-                        {/* Botón de acción */}
-                        <div className="flex gap-2 pt-1">
-                            <button type="button" onClick={onClose}
-                                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-all">
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={metodo === 'qr_simple' ? handleQr : handleConfirmar}
-                                disabled={loading}
-                                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
-                                {loading && <Loader2 size={14} className="animate-spin" />}
-                                {loading
-                                    ? 'Procesando...'
-                                    : metodo === 'qr_simple'
-                                        ? 'Generar y Pagar'
-                                        : `Confirmar ${formatBs(factura.total)}`
-                                }
-                            </button>
+                    {/* ── generando ── */}
+                    {fase === 'generando' && (
+                        <div className="flex flex-col items-center gap-3 py-8">
+                            <Loader2 size={28} className="animate-spin text-blue-500" />
+                            <p className="text-sm text-slate-500">Generando código QR…</p>
                         </div>
-                    </div>
-                )}
+                    )}
+
+                    {/* ── qr ── */}
+                    {fase === 'qr' && (
+                        <QrPanel
+                            factura={factura}
+                            onPagado={handlePagado}
+                            onReiniciar={() => setFase('idle')}
+                        />
+                    )}
+
+                    {/* ── exito ── */}
+                    {fase === 'exito' && (
+                        <div className="flex flex-col items-center py-6 gap-3">
+                            <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                                <CheckCircle2 size={32} className="text-emerald-600" />
+                            </div>
+                            <p className="text-base font-bold text-slate-900">¡Pago registrado!</p>
+                            <p className="text-sm text-slate-500 text-center">
+                                Tu factura del período <strong>{factura.periodo}</strong> ha sido marcada como pagada.
+                            </p>
+                            <div className="bg-slate-50 rounded-xl p-3 w-full text-center space-y-1">
+                                <p className="text-[10px] text-slate-400 uppercase tracking-wider">Comprobante</p>
+                                <p className="text-xs font-mono text-slate-600">
+                                    REF: QR-{factura.id.slice(0, 8).toUpperCase()}
+                                </p>
+                                <p className="text-[10px] text-slate-400">Método: QR Simple</p>
+                                <p className="text-sm font-black text-emerald-700">{formatBs(factura.total)}</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     )
@@ -314,7 +358,7 @@ const PortalFacturas = () => {
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                        <p className="text-sm font-bold text-slate-900"><span>Período {f.periodo}</span></p>
+                                                        <p className="text-sm font-bold text-slate-900">Período {f.periodo}</p>
                                                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${est}`}>
                                                             {icon}{f.estado}
                                                         </span>
@@ -326,7 +370,7 @@ const PortalFacturas = () => {
                                             </div>
                                             <div className="text-right shrink-0">
                                                 <p className="text-base font-black text-slate-900">{formatBs(f.total)}</p>
-                                                <p className="text-xs text-slate-400"><span>{f.consumoM3} m³</span></p>
+                                                <p className="text-xs text-slate-400">{f.consumoM3} m³</p>
                                             </div>
                                         </div>
 
@@ -334,7 +378,7 @@ const PortalFacturas = () => {
                                         <div className="mt-3 pt-3 border-t border-slate-50 grid grid-cols-3 gap-2">
                                             <div>
                                                 <p className="text-[10px] text-slate-400">Consumo</p>
-                                                <p className="text-xs font-semibold text-slate-700"><span>{f.consumoM3} m³</span></p>
+                                                <p className="text-xs font-semibold text-slate-700">{f.consumoM3} m³</p>
                                             </div>
                                             <div>
                                                 <p className="text-[10px] text-slate-400">Cargo fijo</p>

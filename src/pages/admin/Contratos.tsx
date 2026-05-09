@@ -7,6 +7,10 @@ import { getUsuarios } from '@/services/service-user'
 import type { User } from '@/schemas/user'
 import { getDistritos } from '@/services/service-distritos'
 import type { Distrito } from '@/schemas/distritos'
+import { getPredios } from '@/services/service-predios'
+import type { Predio } from '@/schemas/predios'
+import { getMedidores } from '@/services/service-medidores'
+import type { Medidor } from '@/schemas/medidores'
 
 const ESTADO_STYLES: Record<string, string> = {
     activo:    'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -25,6 +29,8 @@ interface FormModalProps {
     initial?: Contrato | null
     usuarios: User[]
     distritos: Distrito[]
+    predios: Predio[]
+    medidores: Medidor[]
     onClose: () => void
     onSaved: () => void
 }
@@ -36,7 +42,7 @@ const EMPTY: ContratoCreate = {
     medidorId: '',
 }
 
-const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: FormModalProps) => {
+const FormModal = ({ mode, initial, usuarios, distritos, predios, medidores, onClose, onSaved }: FormModalProps) => {
     const [form, setForm] = useState<ContratoCreate>(
         initial
             ? {
@@ -48,17 +54,27 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
             }
             : EMPTY
     )
+    // Filtrar predios por distrito seleccionado
+    const [distritoFiltro, setDistritoFiltro] = useState(() => {
+        if (!initial) return ''
+        const predio = predios.find(p => p.id === initial.contrato.predioId)
+        return predio?.distritoId ?? ''
+    })
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
 
     const set = (k: keyof ContratoCreate, v: string) =>
         setForm((p: ContratoCreate) => ({ ...p, [k]: v }))
 
+    const prediosFiltrados = distritoFiltro
+        ? predios.filter(p => p.distritoId === distritoFiltro)
+        : predios
+
     const validate = () => {
         if (!form.nroContrato.trim()) return 'El número de contrato es obligatorio.'
-        if (!form.usuarioId)          return 'Selecciona un usuario.'
-        if (!form.predioId)           return 'Selecciona un predio/distrito.'
-        if (!form.medidorId)          return 'El medidor es obligatorio.'
+        if (!form.usuarioId)          return 'Selecciona un ciudadano.'
+        if (!form.predioId)           return 'Selecciona un predio.'
+        if (!form.medidorId)          return 'Selecciona un medidor.'
         return ''
     }
 
@@ -91,6 +107,7 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    {/* Nº Contrato */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">Nº de Contrato *</label>
                         <input value={form.nroContrato} onChange={e => set('nroContrato', e.target.value)}
@@ -98,6 +115,7 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
                             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm" />
                     </div>
 
+                    {/* Ciudadano */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">Ciudadano titular *</label>
                         <select value={form.usuarioId} onChange={e => set('usuarioId', e.target.value)}
@@ -109,24 +127,48 @@ const FormModal = ({ mode, initial, usuarios, distritos, onClose, onSaved }: For
                         </select>
                     </div>
 
+                    {/* Distrito (filtro para predios) */}
                     <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1">Distrito *</label>
-                        <select value={form.predioId} onChange={e => set('predioId', e.target.value)}
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Filtrar por distrito</label>
+                        <select
+                            value={distritoFiltro}
+                            onChange={e => { setDistritoFiltro(e.target.value); set('predioId', '') }}
                             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm bg-white">
-                            <option value="">— Seleccionar distrito —</option>
+                            <option value="">— Todos los distritos —</option>
                             {distritos.map(d => (
                                 <option key={d.id} value={d.id}>{d.nombre} ({d.codigo})</option>
                             ))}
                         </select>
                     </div>
 
+                    {/* Predio */}
                     <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1">Nº de Medidor *</label>
-                        <input value={form.medidorId} onChange={e => set('medidorId', e.target.value)}
-                            placeholder="Ej: MED-00123456"
-                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm" />
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Predio *</label>
+                        <select value={form.predioId} onChange={e => set('predioId', e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm bg-white">
+                            <option value="">— Seleccionar predio —</option>
+                            {prediosFiltrados.map(p => (
+                                <option key={p.id} value={p.id}>{p.direccion}</option>
+                            ))}
+                        </select>
+                        {prediosFiltrados.length === 0 && distritoFiltro && (
+                            <p className="text-xs text-slate-400 mt-1">No hay predios en este distrito.</p>
+                        )}
                     </div>
 
+                    {/* Medidor */}
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Medidor *</label>
+                        <select value={form.medidorId} onChange={e => set('medidorId', e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm bg-white">
+                            <option value="">— Seleccionar medidor —</option>
+                            {medidores.map(m => (
+                                <option key={m.id} value={m.id}>{m.nroMedidor}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Estado (solo edición) */}
                     {mode === 'edit' && (
                         <div>
                             <label className="block text-sm font-semibold text-slate-700 mb-1">Estado</label>
@@ -165,6 +207,8 @@ const Contratos = () => {
     const [contratos, setContratos] = useState<Contrato[]>([])
     const [usuarios, setUsuarios] = useState<User[]>([])
     const [distritos, setDistritos] = useState<Distrito[]>([])
+    const [predios, setPredios] = useState<Predio[]>([])
+    const [medidores, setMedidores] = useState<Medidor[]>([])
     const [total, setTotal] = useState(0)
     const [page, setPage] = useState(1)
     const LIMIT = 15
@@ -196,6 +240,8 @@ const Contratos = () => {
     useEffect(() => {
         getUsuarios({ limit: 200 }).then(r => setUsuarios(r.data)).catch(() => { })
         getDistritos().then(setDistritos).catch(() => { })
+        getPredios({ limit: 500 }).then(r => setPredios(r.data)).catch(() => { })
+        getMedidores({ limit: 500 }).then(r => setMedidores(r.data)).catch(() => { })
     }, [])
 
     // Acceso correcto a la estructura anidada { contrato, predio, medidor }
@@ -351,6 +397,8 @@ const Contratos = () => {
                     initial={editTarget}
                     usuarios={usuarios}
                     distritos={distritos}
+                    predios={predios}
+                    medidores={medidores}
                     onClose={() => { setShowForm(false); setEditTarget(null) }}
                     onSaved={() => { setShowForm(false); setEditTarget(null); fetchContratos() }}
                 />

@@ -62,7 +62,11 @@ export interface PagoPortal {
 }
 
 export interface QrData {
-    qrData: string   // JSON string con { facturaId, monto, entidad, fecha }
+    qrData?: string   // JSON string con { facturaId, monto, entidad, fecha }
+    qrString?: string // alias usado en algunos endpoints
+    facturaId?: string
+    monto?: string
+    entidad?: string
 }
 
 function handleError(error: unknown): never {
@@ -103,12 +107,15 @@ export async function generarQr(facturaId: string): Promise<QrData> {
 
 export async function confirmarPago(payload: {
     facturaId: string
-    monto: string
+    monto: string | number
     metodoPago?: PagoPortal["metodoPago"]
     referencia?: string
 }): Promise<PagoPortal> {
     try {
-        const res = await api.post<ApiResponse<PagoPortal>>("/pagos/confirmar", payload)
+        const res = await api.post<ApiResponse<PagoPortal>>("/pagos/confirmar", {
+            ...payload,
+            monto: Number(payload.monto),   // el backend espera número
+        })
         return res.data.data
     } catch (e) { handleError(e) }
 }

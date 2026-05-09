@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import AdminLayout from '@/components/ui/AdminLayout'
-import { Plus, Edit2, Trash2, X, Loader2, Gauge, Search, RefreshCw } from 'lucide-react'
+import { Plus, Edit2, Trash2, X, Loader2, Gauge, Search, RefreshCw, AlertTriangle } from 'lucide-react'
 import {
     getMedidores, createMedidor, updateMedidor, deleteMedidor,
 } from '@/services/service-medidores'
+import { getContratos } from '@/services/service-contratos'
 import type { Medidor, MedidorCreate, MedidorUpdate } from '@/schemas/medidores'
+import type { Contrato } from '@/schemas/contrato'
 
 const fmt = (d: string) =>
     new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -13,11 +15,20 @@ const fmt = (d: string) =>
 interface FormModalProps {
     mode: 'create' | 'edit'
     initial?: Medidor | null
+    contratos: Contrato[]
     onClose: () => void
     onSaved: () => void
 }
 
-const FormModal = ({ mode, initial, onClose, onSaved }: FormModalProps) => {
+interface FormModalProps {
+    mode: 'create' | 'edit'
+    initial?: Medidor | null
+    contratos: Contrato[]
+    onClose: () => void
+    onSaved: () => void
+}
+
+const FormModal = ({ mode, initial, contratos, onClose, onSaved }: FormModalProps) => {
     const [nroMedidor, setNroMedidor] = useState(initial?.nroMedidor ?? '')
     const [contratoId, setContratoId] = useState(initial?.contratoId ?? '')
     const [loading, setLoading] = useState(false)
@@ -25,7 +36,6 @@ const FormModal = ({ mode, initial, onClose, onSaved }: FormModalProps) => {
 
     const validate = (): string => {
         if (!nroMedidor.trim()) return 'El número de medidor es obligatorio.'
-        if (!contratoId.trim()) return 'El ID del contrato es obligatorio.'
         return ''
     }
 
@@ -67,6 +77,14 @@ const FormModal = ({ mode, initial, onClose, onSaved }: FormModalProps) => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+                    {/* Aviso de dependencia circular */}
+                    <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-xl p-3">
+                        <AlertTriangle size={14} className="text-blue-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-blue-700">
+                            Puedes crear el medidor sin contrato y asociarlo después desde el módulo de Contratos.
+                        </p>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                             Nº de Medidor *
@@ -78,20 +96,24 @@ const FormModal = ({ mode, initial, onClose, onSaved }: FormModalProps) => {
                             autoFocus
                             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm font-mono uppercase"
                         />
-                        <p className="text-xs text-slate-400 mt-1">Se guardará en mayúsculas automáticamente.</p>
                     </div>
 
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                            ID del Contrato *
+                            Contrato asociado <span className="text-slate-400 font-normal">(opcional)</span>
                         </label>
-                        <input
+                        <select
                             value={contratoId}
                             onChange={e => setContratoId(e.target.value)}
-                            placeholder="UUID del contrato asociado"
-                            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm font-mono"
-                        />
-                        <p className="text-xs text-slate-400 mt-1">Ingresa el ID del contrato al que pertenece este medidor.</p>
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm bg-white"
+                        >
+                            <option value="">— Sin contrato por ahora —</option>
+                            {contratos.map(c => (
+                                <option key={c.contrato.id} value={c.contrato.id}>
+                                    {c.contrato.nroContrato} · {c.predio.direccion}
+                                </option>
+                            ))}
+                        </select>
                     </div>
 
                     {error && (
@@ -158,6 +180,7 @@ const ConfirmModal = ({ medidor, onConfirm, onCancel, loading }: ConfirmModalPro
 // ── Página principal ──────────────────────────────────────
 const Medidores = () => {
     const [medidores, setMedidores] = useState<Medidor[]>([])
+    const [contratos, setContratos] = useState<Contrato[]>([])
     const [total, setTotal] = useState(0)
     const [page, setPage] = useState(1)
     const LIMIT = 20
@@ -183,6 +206,10 @@ const Medidores = () => {
     }, [page])
 
     useEffect(() => { fetchMedidores() }, [fetchMedidores])
+
+    useEffect(() => {
+        getContratos({ limit: 500 }).then(r => setContratos(r.data)).catch(() => {})
+    }, [])
 
     const handleDelete = async () => {
         if (!deleteTarget) return
@@ -357,6 +384,7 @@ const Medidores = () => {
                 <FormModal
                     mode={editTarget ? 'edit' : 'create'}
                     initial={editTarget}
+                    contratos={contratos}
                     onClose={() => { setShowForm(false); setEditTarget(null) }}
                     onSaved={() => { setShowForm(false); setEditTarget(null); fetchMedidores() }}
                 />
